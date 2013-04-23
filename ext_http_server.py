@@ -80,17 +80,6 @@ class RateLimitWriter(object):
 
 
 #
-# HTTPServer extensions
-#
-class SecureHTTPServer(HTTPServer, object):
-    """A HTTP Server object that support HTTPS"""
-    def __init__(self, address, handler, cert_file):
-        """Support TLS/SSL by wrapping the socket."""
-        super(SecureHTTPServer, self).__init__(address, handler)
-        self.socket = ssl.wrap_socket(self.socket, certfile=cert_file)
-
-
-#
 # BaseHTTPRequestHandler extensions
 #
 class AuthHandler(BaseHTTPRequestHandler, object):
@@ -224,8 +213,8 @@ class MyHandler(AuthHandler, RangeHandler, RateLimitHandler):
     """A handler that supports auth, download resuming, and throttling."""
 
 
-class MyServer(SocketServer.ThreadingMixIn, SecureHTTPServer):
-    """A threaded SecureHTTPServer with basic error filtering"""
+class MyServer(SocketServer.ThreadingMixIn, HTTPServer):
+    """A threaded HTTPServer with basic error filtering"""
     def handle_error(self, request, client_address):
         """Disable trackebacks on connection close errors."""
         exc_type, exc_value, _ = sys.exc_info()
@@ -241,7 +230,6 @@ def main():
     """Run a secure threaded server with auth resume and rate limit support."""
     parser = OptionParser(version='%prog {0}'.format(__version__))
     parser.add_option('-p', '--port', type='int', default='8000')
-    parser.add_option('-c', '--cert', help='The TLS/SSL certificate file')
     parser.add_option('-d', '--directory', help='The directory to serve')
     parser.add_option('-r', '--ratelimit', help='The ratelimit in KBps',
                       type='int', default=128)
@@ -260,13 +248,6 @@ def main():
         AuthHandler.add_user(username, password)
     RateLimitWriter.set_rate_limit(options.ratelimit)
 
-    # Verify cert file
-    if not options.cert:
-        parser.error('--cert must be provided')
-    cert_path = os.path.abspath(options.cert)
-    if not os.path.isfile(cert_path):
-        parser.error('Invalid cert file')
-
     # Change into serving directory
     if options.directory:
         try:
@@ -274,7 +255,7 @@ def main():
         except OSError:
             parser.error('Invalid --directory')
 
-    server = MyServer(('', options.port), MyHandler, cert_path)
+    server = MyServer(('', options.port), MyHandler)
     print('Server listening on port %d' % options.port)
     try:
         server.serve_forever()
